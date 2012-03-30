@@ -6,6 +6,19 @@ require File.join(File.dirname(__FILE__), 'lib', 'name_generator.rb')
 DataMapper::Logger.new($stdout, :warn)
 DataMapper.setup(:default, 'mysql://root@localhost/ccportal2')
 
+class ClazzStudent
+  include DataMapper::Resource
+
+  storage_names[:default] = 'portal_class_students'
+
+  property :class_student_id, Serial
+  property :creation_date,    DateTime
+  property :last_update,      DateTime
+
+  belongs_to :clazz, 'Clazz', :parent_key => [:class_id], :child_key => [:class_id]
+  belongs_to :student, 'Member', :parent_key => [:member_id], :child_key => [:member_id]
+end
+
 class Member
   include DataMapper::Resource
 
@@ -21,6 +34,9 @@ class Member
   property :last_update,        DateTime
   property :creation_date,      DateTime
 
+  has n, :clazz_students, 'ClazzStudent', :child_key => [:member_id]
+  has n, :clazzes, 'Clazz', :through => :clazz_students, :via => :clazz
+
   def associated_members
     mems = attribute_get(:associated_members).split(',').uniq
     mems.delete(0)
@@ -35,22 +51,72 @@ class Member
   end
 end
 
+class Clazz
+  include DataMapper::Resource
+
+  storage_names[:default] = 'portal_classes'
+
+  property :class_id, Serial
+
+  has n, :clazz_students, 'ClazzStudent', :child_key => [:class_id]
+  has n, :students, 'Member', :through => :clazz_students, :via => :student
+end
+
 DataMapper.finalize
 
-Member.all.each do |mem|
-  others = mem.associated_members
+@seen = []
+def anonymize(member, in_progress = [])
+  return member if @seen.include?(member)
+
+  others = member.associated_members
   if others.size > 0
     firsts = []
     lasts = []
     others.each do |other|
-      other_first, other_last = NameGenerator.get_name(other.member_id)
+      if in_progress.include?(other)
+        puts "Circular associated_members reference! #{member.member_id} refers to #{other.member_id} which eventually refers back to #{member.member_id}"
+        other_first, other_last = NameGenerator.get_name(other.member_id)
+      else
+        other = anonymize(other, in_progress + [member])
+        other_first = other.member_first_name
+        other_last = other.member_last_name
+      end
       firsts << other_first
       lasts << other_last
     end
-    mem.member_first_name = firsts.join("-")
-    mem.member_last_name = lasts.join("-")
+    member.member_first_name = firsts.join("-")
+    member.member_last_name = lasts.join("-")
   else
-    mem.member_first_name, mem.member_last_name = NameGenerator.get_name(mem.member_id)
+    member.member_first_name, member.member_last_name = NameGenerator.get_name(member.member_id)
   end
-  mem.save
+  member.save!
+
+  @seen << member
+  return member
 end
+
+# First, anonymize all names
+Member.all.each do |mem|
+  orig_name = mem.name
+  anon = anonymize(mem)
+  puts "#{orig_name}: #{anon.name} == [#{anon.associated_members.map{|m| m.name}.join(',')}]"
+end
+
+# Now ensure that within the class, they are all unique
+Clazz.all.each do |cl|
+  seen_names = []
+  cl.students.each do |s|
+    if seen_names.include?(s.name)
+      %w{ o a i u e b c d f g h j }.each do |suffix|
+        next if seen_names.include?("#{s.member_first_name}#{suffix} #{s.member_last_name}")
+        puts "Duplicate found (#{s.name}). Adding suffix #{suffix}"
+        s.member_first_name += suffix
+        s.save
+        break
+      end
+    end
+    seen_names << s.name
+  end
+end
+
+puts "Done anonymizing user names."
