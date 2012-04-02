@@ -65,6 +65,20 @@ end
 DataMapper.finalize
 
 @seen = []
+@seen_names = []
+def ensure_unseen(name)
+  if @seen_names.include?(name)
+    %w{ o a i u e b c d f g h j }.each do |suffix|
+      next if @seen_names.include?("#{name[0]}#{suffix} #{name[1]}")
+      puts "Duplicate found (#{name.join(" ")}). Adding suffix #{suffix}"
+      name[0] += suffix
+      break
+    end
+  end
+  @seen_names << name
+  return name
+end
+
 def anonymize(member, in_progress = [])
   return member if @seen.include?(member)
 
@@ -75,7 +89,7 @@ def anonymize(member, in_progress = [])
     others.each do |other|
       if in_progress.include?(other)
         puts "Circular associated_members reference! #{member.member_id} refers to #{other.member_id} which eventually refers back to #{member.member_id}"
-        other_first, other_last = NameGenerator.get_name(other.member_id)
+        other_first, other_last = ensure_unseen(NameGenerator.get_name(other.member_id))
       else
         other = anonymize(other, in_progress + [member])
         other_first = other.member_first_name
@@ -87,7 +101,7 @@ def anonymize(member, in_progress = [])
     member.member_first_name = firsts.join("-")
     member.member_last_name = lasts.join("-")
   else
-    member.member_first_name, member.member_last_name = NameGenerator.get_name(member.member_id)
+    member.member_first_name, member.member_last_name = ensure_unseen(NameGenerator.get_name(member.member_id))
   end
   member.save!
 
@@ -104,18 +118,11 @@ end
 
 # Now ensure that within the class, they are all unique
 Clazz.all.each do |cl|
-  seen_names = []
+  @seen_names = []
   cl.students.each do |s|
-    if seen_names.include?(s.name)
-      %w{ o a i u e b c d f g h j }.each do |suffix|
-        next if seen_names.include?("#{s.member_first_name}#{suffix} #{s.member_last_name}")
-        puts "Duplicate found (#{s.name}). Adding suffix #{suffix}"
-        s.member_first_name += suffix
-        s.save
-        break
-      end
-    end
-    seen_names << s.name
+    name = [s.member_first_name, s.member_last_name]
+    s.member_first_name, s.member_last_name = ensure_unseen(name)
+    s.save!
   end
 end
 
