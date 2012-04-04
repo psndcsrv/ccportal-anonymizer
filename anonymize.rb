@@ -5,6 +5,21 @@ require File.join(File.dirname(__FILE__), 'lib', 'name_generator.rb')
 
 DataMapper::Logger.new($stdout, :warn)
 DataMapper.setup(:default, 'mysql://root@localhost/ccportal2')
+DataMapper.setup(:diy, 'mysql://root@localhost/diy')
+
+class DiyMember
+  include DataMapper::Resource
+
+  storage_names[:diy] = 'users'
+
+  property :id, Serial
+  property :first_name, String
+  property :last_name, String
+
+  def name
+    "#{first_name} #{last_name}"
+  end
+end
 
 class ClazzStudent
   include DataMapper::Resource
@@ -30,12 +45,27 @@ class Member
   property :member_last_name,   String
   property :member_email,       String
   property :associated_members, String
+  property :diy_member_id,      Integer
 
   property :last_update,        DateTime
   property :creation_date,      DateTime
 
   has n, :clazz_students, 'ClazzStudent', :child_key => [:member_id]
   has n, :clazzes, 'Clazz', :through => :clazz_students, :via => :clazz
+
+  def update_diy_username
+    DataMapper.repository(:diy) {
+      user = DiyMember.get(self.diy_member_id)
+      if user
+        # puts "Updating diy member: #{user.name} => #{name}"
+        user.first_name = member_first_name
+        user.last_name = member_last_name
+        user.save!
+      else
+        puts "No diy user for: #{name}"
+      end
+    }
+  end
 
   def associated_members
     mems = attribute_get(:associated_members).split(',').uniq
@@ -104,6 +134,7 @@ def anonymize(member, in_progress = [])
     member.member_first_name, member.member_last_name = ensure_unseen(NameGenerator.get_name(member.member_id))
   end
   member.save!
+  member.update_diy_username
 
   @seen << member
   return member
@@ -122,6 +153,7 @@ Clazz.all.each do |cl|
   cl.students.each do |s|
     name = [s.member_first_name, s.member_last_name]
     s.member_first_name, s.member_last_name = ensure_unseen(name)
+    s.update_diy_username
     s.save!
   end
 end
