@@ -25,20 +25,21 @@ class Member
         user.first_name = member_first_name
         user.last_name = member_last_name
         user.save!
-
-        sail_user_id = user.sds_sail_user_id
-        DataMapper.repository(:sds) {
-          sail_user = ::SdsSailUser.get(sail_user_id)
-          if sail_user
-            sail_user.first_name = member_first_name
-            sail_user.last_name = member_last_name
-            sail_user.save!
-          else
-            puts "No sail user for: #{name}"
-          end
-        }
       else
         puts "No diy user for: #{name}"
+      end
+    }
+  end
+
+  def update_sds_username
+    DataMapper.repository(:sds) {
+      sail_user = ::SdsSailUser.get(self.sds_member_id)
+      if sail_user
+        sail_user.first_name = member_first_name
+        sail_user.last_name = member_last_name
+        sail_user.save!
+      else
+        puts "No sail user for: #{name}"
       end
     }
   end

@@ -57,6 +57,7 @@ def anonymize(member, in_progress = [])
   end
   member.save!
   member.update_diy_username
+  member.update_sds_username
 
   @seen << member
   return member
