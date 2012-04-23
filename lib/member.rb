@@ -10,6 +10,7 @@ class Member
   property :member_email,       String
   property :associated_members, String
   property :diy_member_id,      Integer
+  property :sds_member_id,      Integer
 
   property :last_update,        DateTime
   property :creation_date,      DateTime
